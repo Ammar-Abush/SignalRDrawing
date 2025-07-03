@@ -1,0 +1,87 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <title>Realtime Drawing</title>
+    <style>
+        canvas {
+            border: 1px solid black;
+        }
+    </style>
+</head>
+<body>
+    <label for="colorPicker">Choose Color: </label>
+    <input type="color" id="colorPicker" value="#000000">
+    <button id="clearBtn">Clear Canvas</button>
+    <canvas id="draw" width="800" height="600"></canvas>
+    <script src="https://cdn.jsdelivr.net/npm/@microsoft/signalr@latest/dist/browser/signalr.min.js"></script>
+    <script>
+    const canvas = document.getElementById('draw');
+    const ctx = canvas.getContext('2d');
+    const clearBtn = document.getElementById('clearBtn');
+    const colorPicker = document.getElementById('colorPicker');
+
+    let drawing = false;
+    let lastX = 0;
+    let lastY = 0;
+
+    const connection = new signalR.HubConnectionBuilder()
+        .withUrl("/drawingHub")
+        .build();
+
+    connection.on("ReceiveDrawData", data => {
+        drawLine(data.x0, data.y0, data.x1, data.y1, data.color, false);
+    });
+
+    connection.on("ReceiveClearCanvas", () => {
+        clearCanvas();
+    });
+
+    connection.start().catch(err => console.error(err.toString()));
+
+    canvas.addEventListener('mousedown', e => {
+        drawing = true;
+        [lastX, lastY] = [e.offsetX, e.offsetY];
+    });
+
+    canvas.addEventListener('mouseup', () => drawing = false);
+    canvas.addEventListener('mouseout', () => drawing = false);
+
+    canvas.addEventListener('mousemove', e => {
+        if (!drawing) return;
+        const newX = e.offsetX;
+        const newY = e.offsetY;
+        const currentColor = colorPicker.value;
+
+        drawLine(lastX, lastY, newX, newY, currentColor, true);
+        [lastX, lastY] = [newX, newY];
+    });
+
+  
+    function drawLine(x0, y0, x1, y1, color, emit) {
+        ctx.beginPath();
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x1, y1);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.closePath();
+
+        if (!emit) return;
+
+        connection.invoke("SendDrawData", {
+            x0, y0, x1, y1, color
+        });
+    }
+
+    function clearCanvas() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    clearBtn.addEventListener('click', () => {
+        clearCanvas();
+        connection.invoke("ClearCanvas");
+    });
+</script>
+
+</body>
+</html>
